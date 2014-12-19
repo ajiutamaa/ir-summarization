@@ -6,6 +6,8 @@
 #	- baris tanpa ditutup titik adalah sub-title
 #	- kalimat terakhir dibetulkan dengan menambah titik
 
+use POSIX;
+
 process_doc();
 
 sub process_doc
@@ -14,6 +16,7 @@ sub process_doc
 	my $onDocRead = 0;
 	my $documentText = "";
 	my @sentences = ();
+	my @sorted = ();
 	my %scores = ();
 	# open doc
 	open(DOC, "dok.txt");
@@ -53,7 +56,8 @@ sub process_doc
 
 	print "=======================\n";
 	foreach $t (sort {$scores{$b} <=> $scores{$a}} keys %scores){
-		printf "sentence ($scores{$t}): %s\n", $sentences[$t];
+		# printf "sentence ($scores{$t}): %s\n", $sentences[$t];
+		push @sorted, $sentences[$t];
 	}
 	
 	# create the list of sorted sentence based on their score
@@ -61,6 +65,10 @@ sub process_doc
 	# pass the sorted list to smoothing function
 
 	# print the summarized text
+	$compressed_num = ceil(0.2*scalar(@sentences));
+	$total_num = scalar(@sentences);
+	print "Summary:\n";
+	print join(". ", @sorted[0..($compressed_num-1)]) . ".\n";
 }
 
 sub sentence_scoring
