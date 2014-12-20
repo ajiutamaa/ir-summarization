@@ -10,6 +10,11 @@ use POSIX;
 use Math::Complex;
 use Bing::Translate;
 
+my (%stopwords_id);
+my (%stopwords_en);
+
+init();
+
 require("module_stemming.pl");
 print "==============================================================\n";
 while($_ = <>){
@@ -24,6 +29,7 @@ sub process_doc
 	my $subtitle;
 	my $onDocRead = 0;
 	my $documentText = "";
+	my (%thematics);
 	my @sentences = ();
 	my @sorted = ();
 	my %scores = ();
@@ -60,15 +66,20 @@ sub process_doc
 		}
 	}
 
-	# test thematic term
-	# %tokens = tokenize(join(" ", @sentences));
-	# foreach $key (sort {$tokens{$b} <=> $tokens{$a}} keys %tokens){
-	# 	print "$key => $tokens{$key}\n";
-	# }
+	# initialize thematic terms
+	%tokens = tokenize(join(" ", @sentences));
+	$counter = 0;
+	foreach $key (sort {$tokens{$b} <=> $tokens{$a}} keys %tokens){
+		if(not defined($stopwords_id{$key})){
+			$thematics{$key} = $tokens{$key};
+			$counter++;
+			if($counter > 10){last;}
+		}
+	}
 
 	# add list to sentence scoring function
 	# function return hash of offset -> score
-	%scores = sentence_scoring(\@sentences, $title, $subtitle);
+	%scores = sentence_scoring(\@sentences, \%thematics, $title, $subtitle);
 	foreach $t (sort {$scores{$b} <=> $scores{$a}} keys %scores){
 		push @sorted, $sentences[$t];
 		# print "Score [$scores{$t}] => $sentences[$t]\n";
@@ -94,20 +105,23 @@ sub process_doc
 sub sentence_scoring
 {
 	my (@sentences) = @{$_[0]};
-	my ($title) = $_[1];
-	my ($subtitle) = $_[2];
+	my (%thematics) = %{$_[1]};
+	my ($title) = $_[2];
+	my ($subtitle) = $_[3];
 	my (%scores) = ();
 	my (@loc_scores) = location_score(scalar(@sentences));
 	$counter = 0;
 	foreach $s (@sentences){
 		if(defined($subtitle)){
-			$scores{$counter} = (0.3 * $loc_scores[$counter]) 
-								+ (0.4 * similarity($s, $title))
-								+ (0.3 * similarity($s, $subtitle));
+			$scores{$counter} = (0.2 * $loc_scores[$counter]) 
+								+ (0.3 * similarity($s, $title))
+								+ (0.2 * similarity($s, $subtitle)
+								+ (0.3 * thematic_score($s, \%thematics)));
 		}
 		else{
 			$scores{$counter} = (0.3 * $loc_scores[$counter]) 
-								+ (0.7 * similarity($s, $title));
+								+ (0.4 * similarity($s, $title)
+								+ (0.3 * thematic_score($s, \%thematics)));
 		}
 		$counter++;
 	}
@@ -157,6 +171,27 @@ sub similarity
 	return $sum / ($div1 * $div2);
 }
 
+sub thematic_score
+{
+	my ($sentence1) = lc($_[0]);
+	my (%thematics) = %{$_[1]};
+	my %token1 = tokenize($sentence1);
+	$div1 = 0;
+	$div2 = 0;
+	$sum = 0;
+	foreach $t (keys %token1){$div1 += $token1{$t}**2;}
+	foreach $t (keys %thematics){$div2 += $thematics{$t}**2;}
+	foreach $i (keys %token1){
+		foreach $j (keys %thematics){
+			if(($i eq $j) or (stem($i) eq stem($j))){
+				$sum += $token1{$i} * $thematics{$j};
+			}
+		}
+	}
+	$div1 = sqrt($div1); $div2 = sqrt($div2);
+	return $sum / ($div1 * $div2);
+}
+
 # scores each sentences based on the location relative to
 # the start of the passage
 # for 19 sentences
@@ -179,4 +214,15 @@ sub translateToId
 	my $translator = Bing::Translate->new('ajiutamaa', 
 						'/+tFXDBfvYIZip4BPjrd9XxahB3iiWKJGeNMAcKcUh4='); 
 	return $result = $translator->translate("$en_str", "en", "id");
+}
+
+sub init
+{
+	open(SW, "stopwords_id.txt");
+	while($line = <SW>){
+		@stopwords = split(/\s/, $line);
+		foreach $s (@stopwords){
+			$stopwords_id{$s} = 1;
+		}
+	}
 }
